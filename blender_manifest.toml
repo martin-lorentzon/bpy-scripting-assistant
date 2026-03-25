@@ -1,0 +1,31 @@
+schema_version = "1.0.0"
+
+id = "bpy_scripting_assistant"
+version = "1.0.0"
+name = "BPY Scripting Assistant"
+tagline = "bpy, but you remember the syntax"
+maintainer = "Martin Lorentzon <mtlorentzon@proton.me>"
+type = "add-on"
+
+website = "https://github.com/martin-lorentzon/bpy-scripting-assistant"
+
+# tags = ["Text Editor", "Development"]
+
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+# platforms = ["windows-x64", "macos-arm64", "linux-x64"]
+# # Other supported platforms: "windows-arm64", "macos-x64"
+
+# wheels = [
+#   "./wheels/hexdump-3.3-py3-none-any.whl",
+#   "./wheels/jsmin-3.0.1-py3-none-any.whl",
+# ]
+
+[permissions]
+files = "Interact with the file system"
+network = "Communicate with the Ollama API"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/.git*", "/*.zip", "/*.bat"]
