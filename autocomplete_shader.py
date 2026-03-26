@@ -51,15 +51,15 @@ shader = gpu.shader.create_from_info(shader_info)
 batch = batch_for_shader(shader, 'TRI_STRIP', {"pos": coords})
 
 
-def draw_autocomplete(text="import bpy"):
-    if text == "":
+def draw_autocomplete(op):
+    if op.text == "":
         return
 
     context = bpy.context
     region = context.region
-    space = context.space_data
+    st = context.space_data
 
-    if not (space.type == 'TEXT_EDITOR' and space.text):
+    if not (st.type == 'TEXT_EDITOR' and st.text and st.is_syntax_highlight_supported()):
         return
 
     prefs = context.preferences
@@ -68,20 +68,20 @@ def draw_autocomplete(text="import bpy"):
     # Font Setup & Measurement
     scale = prefs.system.ui_scale * prefs.system.pixel_size
     font_id = 1
-    font_size = space.font_size * scale
+    font_size = st.font_size * scale
     blf.size(font_id, font_size)
     character_w, character_h = blf.dimensions(font_id, "|")
 
-    text_w, text_h = blf.dimensions(font_id, text)
+    text_w, text_h = blf.dimensions(font_id, op.text)
     padding = addon_prefs.autocomplete_padding * font_size
     background_w, background_h = text_w + (padding * 2), character_h + (padding * 2)
 
     # Get cursor position
-    cursor_x, cursor_y = space.region_location_from_cursor(
-        space.text.current_line_index,
-        space.text.current_character
+    cursor_x, cursor_y = st.region_location_from_cursor(
+        st.text.current_line_index,
+        st.text.current_character
     )
-    offset_x = character_w
+    offset_x = character_w * addon_prefs.autocomplete_horizontal_offset
     offset_y = character_h / 4
     base_x = cursor_x + offset_x - padding
     base_y = cursor_y + offset_y / 2 - padding
@@ -107,7 +107,7 @@ def draw_autocomplete(text="import bpy"):
     # Draw text
     blf.position(font_id, cursor_x + offset_x, cursor_y + offset_y, 0)
     blf.color(font_id, *addon_prefs.autocomplete_text_color)
-    blf.draw(font_id, text)
+    blf.draw(font_id, op.text)
 
     gpu.state.blend_set('NONE')
     gpu.state.scissor_test_set(False)

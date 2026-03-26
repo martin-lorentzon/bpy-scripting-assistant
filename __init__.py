@@ -23,6 +23,7 @@ _needs_reload = "bpy" in locals()
 
 import bpy
 from . import addon_preferences
+from . import ollama
 from . import autocomplete_shader
 from . import modal_operator
 from . import ui
@@ -32,6 +33,7 @@ if _needs_reload:
     from importlib import reload
 
     reload(addon_preferences)
+    reload(ollama)
     reload(autocomplete_shader)
     reload(modal_operator)
     reload(ui)

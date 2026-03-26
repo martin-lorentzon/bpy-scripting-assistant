@@ -10,8 +10,10 @@ import textwrap
 
 draw_injection = """
 if text:
+    layout.separator_spacer()
+    row = layout.row()
+    row.active = is_syntax_highlight_supported
     modal_is_running = context.window_manager.code_completion_running
-    row.separator_spacer()
     row.operator(
         "text.toggle_code_completion",
         text="",
@@ -32,7 +34,7 @@ def new_header_draw_factory(original_draw):
 
     source = source.replace(
         insert_after,
-        insert_after + "\n" + indent_multiline(draw_injection, 4 * 2)
+        insert_after + "\n" + indent_multiline(draw_injection, 4)
     )
 
     globs = {**original_draw.__globals__, "draw_injection": draw_injection}
