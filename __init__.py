@@ -1,6 +1,6 @@
 bl_info = {
     "name": "BPY Scripting Assistant",
-    "description": "bpy, but you remember the syntax",
+    "description": "Code suggestions for Blender Python using an LLM",
     "author": "Martin Lorentzon <mtlorentzon@proton.me>",
     "version": (1, 0, 0),
     "blender": (5, 0, 0),
@@ -23,8 +23,10 @@ _needs_reload = "bpy" in locals()
 
 import bpy
 from . import addon_preferences
-from . import ollama
+from . import session_manager
+from . import session_operators
 from . import autocomplete_shader
+from . import ollama
 from . import modal_operator
 from . import ui
 
@@ -33,8 +35,10 @@ if _needs_reload:
     from importlib import reload
 
     reload(addon_preferences)
-    reload(ollama)
+    reload(session_manager)
+    reload(session_operators)
     reload(autocomplete_shader)
+    reload(ollama)
     reload(modal_operator)
     reload(ui)
 # fmt: on
@@ -47,6 +51,7 @@ if _needs_reload:
 
 modules = [
     addon_preferences,
+    session_operators,
     modal_operator,
     ui,
 ]
@@ -58,6 +63,8 @@ def register():
 
 
 def unregister():
+    session_manager.close_session()
+
     for module in reversed(modules):
         module.unregister()
 

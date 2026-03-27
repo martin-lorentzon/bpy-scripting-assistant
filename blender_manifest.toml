@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 id = "bpy_scripting_assistant"
 version = "1.0.0"
 name = "BPY Scripting Assistant"
-tagline = "bpy, but you remember the syntax"
+tagline = "Code suggestions for Blender Python using an LLM"
 maintainer = "Martin Lorentzon <mtlorentzon@proton.me>"
 type = "add-on"
 

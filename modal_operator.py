@@ -1,13 +1,11 @@
 import bpy
 from bpy.props import BoolProperty
-import re
-import time
-import threading
-import queue
 
+import time
+from . import session_manager
 from .text_helpers import get_cursor_index
 from .autocomplete_shader import draw_autocomplete
-from .ollama import get_completion
+from .ollama import build_fim_prompt, get_completion
 
 
 class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
@@ -17,6 +15,10 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
 
     _draw_handler = None
 
+    @classmethod
+    def poll(self, context):
+        return session_manager.has_session()
+
     def invoke(self, context, event):
         if context.window_manager.code_completion_running:
             context.window_manager.code_completion_running = False
@@ -24,6 +26,10 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
             return {"CANCELLED"}
 
         self.space_data = context.space_data
+        self.text = ""
+        self.last_input_time = time.time()
+        self.last_prompt = ""
+
         context.window_manager.modal_handler_add(self)
         context.window_manager.code_completion_running = True
 
@@ -33,9 +39,8 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
-        if not context.window_manager.code_completion_running or not self.space_data.text:
+        if not (context.window_manager.code_completion_running and self.space_data.text and session_manager.has_session()):
             context.window_manager.code_completion_running = False
-
             BPYSA_OT_toggle_code_completion._remove_draw_handler()
 
             if context.area:
@@ -44,6 +49,7 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
 
         addon_prefs = context.preferences.addons[__package__].preferences
 
+        # region Prompt Building
         text_data: bpy.types.Text = self.space_data.text
 
         cursor_index = get_cursor_index(text_data)
@@ -55,43 +61,33 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         prefix_lines = raw_prefix.splitlines()
         suffix_lines = raw_suffix.splitlines()
 
-        def remove_comments(lines: list[str]) -> list[str]:
-            """Src: https://stackoverflow.com/a/73316105"""
-            new_lines = []
-            for line in lines:
-                if line.startswith("#"):  # Deal with comment as the first character
-                    continue
+        prefix = "\n".join(prefix_lines[-40:])
+        suffix = "\n".join(suffix_lines[:10])
 
-                line = line.split(" #")[0]
-                if line.strip() != "":
-                    new_lines.append(line)
-
-            return new_lines
-
-        prefix_lines = remove_comments(prefix_lines)
-        suffix_lines = remove_comments(suffix_lines)
-
-        prefix = "\n".join(prefix_lines[-2:])
-        suffix = "\n".join(suffix_lines[:2])
-
-        prompt = f"<|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>"
+        prompt = build_fim_prompt(prefix, suffix)
+        # endregion
 
         if event.type == "TEXTINPUT":
             self.last_input_time = time.time()
+            print("HELLO")
+        debounce_ok = time.time() - self.last_input_time > 0.5
 
-        new_prompt = prompt != getattr(self, "last_prompt", "")
-        debounce_ok = time.time() - getattr(self, "last_input_time", 0) > 0.5
+        new_prompt = prompt != self.last_prompt
 
         if new_prompt and debounce_ok:
             # self.text = prompt
-            self.text = get_completion(addon_prefs.api_base_url, addon_prefs.api_model, prompt)
+            self.text = get_completion(
+                session_manager.get_session(),
+                addon_prefs.api_base_url,
+                addon_prefs.api_model,
+                prompt
+            )
 
         self.last_prompt = prompt
 
         # Redraw to update overlay
         if context.area:
             context.area.tag_redraw()
-
         return {"PASS_THROUGH"}
 
     @classmethod

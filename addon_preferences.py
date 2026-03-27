@@ -2,17 +2,19 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import StringProperty, FloatProperty, FloatVectorProperty
 
+from . import session_manager
+
 
 class BPYSAPreferences(AddonPreferences):
     bl_idname = __package__
 
     api_base_url: StringProperty(
-        name="Endpoint URL",
+        name="API Base URL",
         default="http://localhost:11434"
     )
     api_model: StringProperty(
         name="Model",
-        default="qwen2.5-coder:0.5b"
+        default="qwen2.5-coder:1.5b-base-q4_K_M"
     )
     autocomplete_bg_color: FloatVectorProperty(
         name="Autocomplete Background Color",
@@ -44,14 +46,14 @@ class BPYSAPreferences(AddonPreferences):
     )
     autocomplete_horizontal_offset: FloatProperty(
         name="Autocomplete Horizontal Offset",
-        default=1
+        default=0
     )
 
     def draw(self, context):
         layout = self.layout
         layout.use_property_split = True
 
-        header, panel = layout.panel("bpysa_api_panel", default_closed=True)
+        header, panel = layout.panel("bpysa_api_panel")
         header.label(text="API Settings")
 
         if panel:
@@ -60,20 +62,25 @@ class BPYSAPreferences(AddonPreferences):
             panel.separator()
             panel.prop(self, "api_base_url")
             panel.prop(self, "api_model")
+            row = panel.row()
+            row.operator("bpysa.create_session", text="Connect")
+            sub = row.row()
+            sub.enabled = session_manager.has_session()
+            sub.operator("bpysa.close_session", text="Disconnect")
 
         header, panel = layout.panel("bpysa_theme_panel", default_closed=True)
         header.label(text="Theme")
 
         if panel:
             box = panel.box()
-            box.label(text="Autocomplete")
+            box.label(text="Autocomplete Overlay")
 
             box.prop(self, "autocomplete_bg_color", text="Background Color")
             box.prop(self, "autocomplete_text_color", text="Text Color")
             box.prop(self, "autocomplete_padding", text="Padding")
-            box.prop(self, "autocomplete_horizontal_offset", text="Horizontal Offset")
             box.prop(self, "autocomplete_corner_radius", text="Corner Radius")
             box.prop(self, "autocomplete_border_feather", text="Border Feather")
+            box.prop(self, "autocomplete_horizontal_offset", text="Horizontal Offset")
 
 
 # ——————————————————————————————————————————————————————————————————————
