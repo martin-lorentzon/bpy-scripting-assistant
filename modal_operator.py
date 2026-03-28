@@ -1,7 +1,8 @@
 import bpy
 from bpy.props import BoolProperty
-
+import threading
 import time
+
 from . import session_manager
 from .text_helpers import get_cursor_index
 from .autocomplete_shader import draw_autocomplete
@@ -15,8 +16,25 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
 
     _draw_handler = None
 
+    def _run_completion(self, area, addon_prefs, prompt, current_request):
+        result = get_completion(
+            session_manager.get_session(),
+            addon_prefs.api_base_url,
+            addon_prefs.api_model,
+            prompt
+        )
+        if current_request == self._request_id:
+            self._text = result
+
+            def redraw():
+                if area:
+                    area.tag_redraw()
+                return None
+
+            bpy.app.timers.register(redraw, first_interval=0.0)
+
     @classmethod
-    def poll(self, context):
+    def poll(cls, context):
         return session_manager.has_session()
 
     def invoke(self, context, event):
@@ -25,10 +43,12 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
             BPYSA_OT_toggle_code_completion._remove_draw_handler()
             return {"CANCELLED"}
 
-        self.space_data = context.space_data
-        self.text = ""
-        self.last_input_time = time.time()
-        self.last_prompt = ""
+        self._text = ""
+        self._last_input_time = time.time()
+        self._last_prompt = ""
+
+        self._thread = None
+        self._request_id = 0
 
         context.window_manager.modal_handler_add(self)
         context.window_manager.code_completion_running = True
@@ -39,10 +59,9 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
-        if not (context.window_manager.code_completion_running and self.space_data.text and session_manager.has_session()):
+        if not (context.window_manager.code_completion_running and context.space_data.text and session_manager.has_session()):
             context.window_manager.code_completion_running = False
             BPYSA_OT_toggle_code_completion._remove_draw_handler()
-
             if context.area:
                 context.area.tag_redraw()
             return {"CANCELLED"}
@@ -50,50 +69,53 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         addon_prefs = context.preferences.addons[__package__].preferences
 
         # region Prompt Building
-        text_data: bpy.types.Text = self.space_data.text
-
+        text_data: bpy.types.Text = context.space_data.text
         cursor_index = get_cursor_index(text_data)
-
         full_text = text_data.as_string()
+
         raw_prefix = full_text[:cursor_index]
         raw_suffix = full_text[cursor_index:]
 
         prefix_lines = raw_prefix.splitlines()
         suffix_lines = raw_suffix.splitlines()
 
-        prefix = "\n".join(prefix_lines[-40:])
-        suffix = "\n".join(suffix_lines[:10])
+        prefix = "\n".join(prefix_lines[-addon_prefs.fim_prefix_lines:])
+        suffix = "\n".join(suffix_lines[:addon_prefs.fim_suffix_lines])
 
         prompt = build_fim_prompt(prefix, suffix)
         # endregion
 
-        if event.type == "TEXTINPUT":
-            self.last_input_time = time.time()
-            print("HELLO")
-        debounce_ok = time.time() - self.last_input_time > 0.5
+        if event.unicode != "" or event.type in {'BACK_SPACE', 'DEL', 'RET'}:
+            self._last_input_time = time.time()
 
-        new_prompt = prompt != self.last_prompt
+        debounce_ok = (time.time() - self._last_input_time) > addon_prefs.debounce_time
+        new_prompt = prompt != self._last_prompt
 
-        if new_prompt and debounce_ok:
-            # self.text = prompt
-            self.text = get_completion(
-                session_manager.get_session(),
-                addon_prefs.api_base_url,
-                addon_prefs.api_model,
-                prompt
+        if new_prompt:
+            self._request_id += 1
+            self._thread = threading.Thread(
+                target=self._run_completion,
+                args=(context.area, addon_prefs, prompt, self._request_id),
+                daemon=True
             )
+            self._thread.start()
 
-        self.last_prompt = prompt
+        self._last_prompt = prompt
 
-        # Redraw to update overlay
-        if context.area:
-            context.area.tag_redraw()
+        if event.type == "TAB" and event.value == "PRESS":
+            bpy.ops.text.insert(text=self._text)
+            return {"RUNNING_MODAL"}
+
+        context.area.tag_redraw()
         return {"PASS_THROUGH"}
 
     @classmethod
     def _remove_draw_handler(cls):
         if cls._draw_handler is not None:
-            bpy.types.SpaceTextEditor.draw_handler_remove(cls._draw_handler, "WINDOW")
+            try:
+                bpy.types.SpaceTextEditor.draw_handler_remove(cls._draw_handler, "WINDOW")
+            except Exception:
+                pass
             cls._draw_handler = None
 
 
@@ -101,11 +123,9 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
 # MARK: REGISTRATION
 # ——————————————————————————————————————————————————————————————————————
 
-
 basic_register, basic_unregister = bpy.utils.register_classes_factory(
-    (
-        BPYSA_OT_toggle_code_completion,
-    ))
+    (BPYSA_OT_toggle_code_completion,)
+)
 
 
 def register():

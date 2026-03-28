@@ -1,6 +1,6 @@
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import StringProperty, FloatProperty, FloatVectorProperty
+from bpy.props import StringProperty, FloatProperty, FloatVectorProperty, IntProperty
 
 from . import session_manager
 
@@ -15,6 +15,28 @@ class BPYSAPreferences(AddonPreferences):
     api_model: StringProperty(
         name="Model",
         default="qwen2.5-coder:1.5b-base-q4_K_M"
+    )
+    fim_prefix_lines: IntProperty(
+        name="Prefix Lines",
+        description="The number of lines *before* the cursor to use as context",
+        default=40,
+        min=1,
+        max=100
+    )
+    fim_suffix_lines: IntProperty(
+        name="Suffix Lines",
+        description="The number of lines *after* the cursor to use as context",
+        default=10,
+        min=1,
+        max=100
+    )
+    debounce_time: FloatProperty(
+        name="Suggestion Delay",
+        description="Delay after typing before code completion activates",
+        min=0.1,
+        max=5.0,
+        default=0.5,
+        subtype="TIME_ABSOLUTE"
     )
     autocomplete_bg_color: FloatVectorProperty(
         name="Autocomplete Background Color",
@@ -38,15 +60,15 @@ class BPYSAPreferences(AddonPreferences):
     )
     autocomplete_corner_radius: FloatProperty(
         name="Autocomplete Corner Radius",
-        default=0.5
+        default=1.0
     )
     autocomplete_border_feather: FloatProperty(
         name="Autocomplete Border Feather",
-        default=0.25
+        default=1.0
     )
     autocomplete_horizontal_offset: FloatProperty(
         name="Autocomplete Horizontal Offset",
-        default=0
+        default=0.0
     )
 
     def draw(self, context):
@@ -59,7 +81,7 @@ class BPYSAPreferences(AddonPreferences):
         if panel:
             box = panel.box()
             box.label(text="Supported providers: Ollama", icon="WARNING_LARGE")
-            panel.separator()
+            panel.separator(type="LINE")
             panel.prop(self, "api_base_url")
             panel.prop(self, "api_model")
             row = panel.row()
@@ -67,6 +89,14 @@ class BPYSAPreferences(AddonPreferences):
             sub = row.row()
             sub.enabled = session_manager.has_session()
             sub.operator("bpysa.close_session", text="Disconnect")
+
+        header, panel = layout.panel("bpysa_autocomplete_panel", default_closed=True)
+        header.label(text="Code Completion")
+
+        if panel:
+            panel.prop(self, "debounce_time")
+            panel.prop(self, "fim_prefix_lines")
+            panel.prop(self, "fim_suffix_lines")
 
         header, panel = layout.panel("bpysa_theme_panel", default_closed=True)
         header.label(text="Theme")
