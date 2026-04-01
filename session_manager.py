@@ -18,7 +18,6 @@ def close_session():
 
 
 def get_session():
-    global _session
     return _session
 
 
