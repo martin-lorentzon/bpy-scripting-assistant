@@ -1,20 +1,72 @@
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import StringProperty, FloatProperty, FloatVectorProperty, IntProperty
-
+from bpy.props import EnumProperty, StringProperty, IntProperty, FloatProperty, FloatVectorProperty
+from threading import Thread
 from . import session_manager
+from .providers import PROVIDERS, Ollama
 
 
 class BPYSAPreferences(AddonPreferences):
     bl_idname = __package__
 
-    api_base_url: StringProperty(
-        name="API Base URL",
-        default="http://localhost:11434"
+    def _get_provider(self):
+        return next((p for p in PROVIDERS if p.code_id == self.api_provider), None)
+
+    # region: Model search
+    _cached_models = []
+
+    def fetch_models_async(self):
+        provider = self._get_provider()
+
+        if provider is None:
+            print(f"Provider {self.api_provider} not implementet")
+        else:
+            def worker():
+                if provider:
+                    BPYSAPreferences._cached_models = provider.get_models()
+
+            Thread(target=worker, daemon=True).start()
+
+    def model_search(self, context, edit_text):
+        self.fetch_models_async()  # New results don't show until UI refresh (won't fix)
+        return BPYSAPreferences._cached_models
+    # endregion
+
+    def api_provider_update(self, context):
+        provider = self._get_provider()
+
+        if provider is None:
+            print(f"Provider {self.api_provider} not implementet")
+            return
+        else:
+            self.base_url = provider.base_url
+
+        self.fetch_models_async()
+
+    def model_update(self, context):
+        value = self.model
+        if "qwen" in value.lower() and "coder" in value.lower():
+            self.model_family = "QWEN_CODER"
+
+    api_provider: EnumProperty(
+        name="API Provider",
+        description=(
+            "The API provider used to serve the model."
+        ),
+        items=[
+            ("OLLAMA", "Ollama", "")
+        ],
+        update=api_provider_update
     )
-    api_model: StringProperty(
-        name="Model",
-        default="qwen2.5-coder:1.5b-base-q4_K_M"
+    base_url: StringProperty(
+        name="API Base URL",
+        default=Ollama.base_url
+    )
+    code_completion_model: StringProperty(
+        name="Code Completion Model",
+        default="qwen2.5-coder:1.5b-base-q4_K_M",
+        search=model_search,
+        update=model_update
     )
     fim_prefix_lines: IntProperty(
         name="Prefix Lines",
@@ -79,11 +131,11 @@ class BPYSAPreferences(AddonPreferences):
         header.label(text="API Settings")
 
         if panel:
-            box = panel.box()
-            box.label(text="Supported providers: Ollama", icon="WARNING_LARGE")
-            panel.separator(type="LINE")
-            panel.prop(self, "api_base_url")
-            panel.prop(self, "api_model")
+            panel.prop(self, "api_provider")
+            panel.prop(self, "base_url")
+            panel.separator()
+            panel.prop(self, "model")
+            panel.separator()
             row = panel.row()
             row.operator("bpysa.create_session", text="Connect")
             sub = row.row()
@@ -118,4 +170,10 @@ class BPYSAPreferences(AddonPreferences):
 # ——————————————————————————————————————————————————————————————————————
 
 
-register, unregister = bpy.utils.register_classes_factory((BPYSAPreferences,))
+basic_register, unregister = bpy.utils.register_classes_factory((BPYSAPreferences,))
+
+
+def register():
+    basic_register()
+    addon_prefs = bpy.context.preferences.addons[__package__].preferences
+    addon_prefs.fetch_models_async()

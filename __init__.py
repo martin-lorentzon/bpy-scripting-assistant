@@ -22,11 +22,11 @@ bl_info = {
 _needs_reload = "bpy" in locals()
 
 import bpy
-from . import addon_preferences
+from . import providers
 from . import session_manager
+from . import addon_preferences
 from . import session_operators
 from . import autocomplete_shader
-from . import ollama
 from . import modal_operator
 from . import ui
 
@@ -34,11 +34,11 @@ from . import ui
 if _needs_reload:
     from importlib import reload
 
-    reload(addon_preferences)
+    reload(providers)
     reload(session_manager)
+    reload(addon_preferences)
     reload(session_operators)
     reload(autocomplete_shader)
-    reload(ollama)
     reload(modal_operator)
     reload(ui)
 # fmt: on

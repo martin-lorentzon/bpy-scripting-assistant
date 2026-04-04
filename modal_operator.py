@@ -6,7 +6,8 @@ import time
 from . import session_manager
 from .text_helpers import get_cursor_index
 from .autocomplete_shader import draw_autocomplete
-from .ollama import build_fim_prompt, get_completion
+from .ollama import get_completion
+from .qwen_coder import build_fim_prompt
 
 
 class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
@@ -19,8 +20,8 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
     def _run_completion(self, area, addon_prefs, prompt, current_request):
         result = get_completion(
             session_manager.get_session(),
-            addon_prefs.api_base_url,
-            addon_prefs.api_model,
+            addon_prefs.base_url,
+            addon_prefs.model,
             prompt
         )
         if current_request == self._request_id:
@@ -81,6 +82,8 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
 
         prefix = "\n".join(prefix_lines[-addon_prefs.fim_prefix_lines:])
         suffix = "\n".join(suffix_lines[:addon_prefs.fim_suffix_lines])
+
+        print(addon_prefs.model_family)
 
         prompt = build_fim_prompt(prefix, suffix)
         # endregion

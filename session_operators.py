@@ -17,7 +17,7 @@ class BPYSA_OT_create_session(bpy.types.Operator):
     def execute(self, context):
         addon_prefs = context.preferences.addons[__package__].preferences
 
-        ok, msg = session_manager.create_and_test(addon_prefs.api_base_url)
+        ok, msg = session_manager.create_and_test(addon_prefs.base_url)
 
         if not ok:
             self.report({"ERROR"}, msg)
