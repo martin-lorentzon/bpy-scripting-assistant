@@ -23,6 +23,7 @@ _needs_reload = "bpy" in locals()
 
 import bpy
 from . import providers
+from . import models
 from . import session_manager
 from . import addon_preferences
 from . import session_operators
@@ -35,6 +36,7 @@ if _needs_reload:
     from importlib import reload
 
     reload(providers)
+    reload(models)
     reload(session_manager)
     reload(addon_preferences)
     reload(session_operators)

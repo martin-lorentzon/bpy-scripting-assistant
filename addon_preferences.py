@@ -2,71 +2,60 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import EnumProperty, StringProperty, IntProperty, FloatProperty, FloatVectorProperty
 from threading import Thread
+from .providers import PROVIDERS
+from .models import MODELS
 from . import session_manager
-from .providers import PROVIDERS, Ollama
 
 
 class BPYSAPreferences(AddonPreferences):
     bl_idname = __package__
 
-    def _get_provider(self):
-        return next((p for p in PROVIDERS if p.code_id == self.api_provider), None)
+    def get_provider(self):
+        return next(p for p in PROVIDERS if p.code_id == self.llm_provider)
+
+    def get_model_family(self, model_preference: str):
+        for model in MODELS:
+            activation_words = model.activation_words.split()
+            if all(word in getattr(self, model_preference) for word in activation_words):
+                return model
+        return MODELS[0]
 
     # region: Model search
     _cached_models = []
 
     def fetch_models_async(self):
-        provider = self._get_provider()
+        def worker():
+            BPYSAPreferences._cached_models = self.get_provider().get_models()
 
-        if provider is None:
-            print(f"Provider {self.api_provider} not implementet")
-        else:
-            def worker():
-                if provider:
-                    BPYSAPreferences._cached_models = provider.get_models()
-
-            Thread(target=worker, daemon=True).start()
+        Thread(target=worker, daemon=True).start()
 
     def model_search(self, context, edit_text):
         self.fetch_models_async()  # New results don't show until UI refresh (won't fix)
         return BPYSAPreferences._cached_models
+
+    def llm_provider_update(self, context):
+        self.base_url = self.get_provider().base_url
+        self.fetch_models_async()
     # endregion
 
-    def api_provider_update(self, context):
-        provider = self._get_provider()
+    provider_items = [(p.code_id, p.name, "") for p in PROVIDERS]
 
-        if provider is None:
-            print(f"Provider {self.api_provider} not implementet")
-            return
-        else:
-            self.base_url = provider.base_url
-
-        self.fetch_models_async()
-
-    def model_update(self, context):
-        value = self.model
-        if "qwen" in value.lower() and "coder" in value.lower():
-            self.model_family = "QWEN_CODER"
-
-    api_provider: EnumProperty(
-        name="API Provider",
+    llm_provider: EnumProperty(
+        name="LLM Provider",
         description=(
-            "The API provider used to serve the model."
+            "The LLM provider used to serve the model."
         ),
-        items=[
-            ("OLLAMA", "Ollama", "")
-        ],
-        update=api_provider_update
+        items=provider_items,
+        update=llm_provider_update
     )
     base_url: StringProperty(
         name="API Base URL",
-        default=Ollama.base_url
+        default=PROVIDERS[0].base_url
     )
     code_completion_model: StringProperty(
         name="Code Completion Model",
         default="qwen2.5-coder:1.5b-base-q4_K_M",
         search=model_search,
-        update=model_update
     )
     fim_prefix_lines: IntProperty(
         name="Prefix Lines",
@@ -131,7 +120,7 @@ class BPYSAPreferences(AddonPreferences):
         header.label(text="API Settings")
 
         if panel:
-            panel.prop(self, "api_provider")
+            panel.prop(self, "llm_provider")
             panel.prop(self, "base_url")
             panel.separator()
             panel.prop(self, "model")
