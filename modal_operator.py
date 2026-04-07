@@ -1,13 +1,14 @@
 import bpy
 from bpy.props import BoolProperty
+from requests import Session
 import threading
 import time
 
 from . import session_manager
-from .text_helpers import get_cursor_index
 from .autocomplete_shader import draw_autocomplete
-from .ollama import get_completion
-from .qwen_coder import build_fim_prompt
+from .text_helpers import get_cursor_index
+from .providers import BaseLLMProvider
+from .models import BaseModelFamily
 
 
 class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
@@ -17,22 +18,25 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
 
     _draw_handler = None
 
-    def _run_completion(self, area, addon_prefs, prompt, current_request):
-        result = get_completion(
-            session_manager.get_session(),
+    def worker(self, area, addon_prefs, session: Session, prompt: str, current_request: int):
+        provider: BaseLLMProvider = addon_prefs.get_provider()
+
+        result = provider.prompt(
+            session,
             addon_prefs.base_url,
-            addon_prefs.model,
+            addon_prefs.code_completion_model,
             prompt
         )
+
         if current_request == self._request_id:
             self._text = result
 
-            def redraw():
+            def redraw_area():
                 if area:
                     area.tag_redraw()
                 return None
 
-            bpy.app.timers.register(redraw, first_interval=0.0)
+            bpy.app.timers.register(redraw_area, first_interval=0.0)
 
     @classmethod
     def poll(cls, context):
@@ -68,6 +72,8 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
             return {"CANCELLED"}
 
         addon_prefs = context.preferences.addons[__package__].preferences
+        provider: BaseLLMProvider = addon_prefs.get_provider()
+        model_family: BaseModelFamily = addon_prefs.get_model_family("code_completion_model")
 
         # region Prompt Building
         text_data: bpy.types.Text = context.space_data.text
@@ -77,15 +83,13 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         raw_prefix = full_text[:cursor_index]
         raw_suffix = full_text[cursor_index:]
 
-        prefix_lines = raw_prefix.splitlines()
-        suffix_lines = raw_suffix.splitlines()
+        prefix_lines = raw_prefix.splitlines()[-addon_prefs.fim_prefix_lines:]
+        suffix_lines = raw_suffix.splitlines()[:addon_prefs.fim_suffix_lines]
 
-        prefix = "\n".join(prefix_lines[-addon_prefs.fim_prefix_lines:])
-        suffix = "\n".join(suffix_lines[:addon_prefs.fim_suffix_lines])
+        prefix = "\n".join(prefix_lines)
+        suffix = "\n".join(suffix_lines)
 
-        print(addon_prefs.model_family)
-
-        prompt = build_fim_prompt(prefix, suffix)
+        prompt = model_family.build_fim_prompt(prefix, suffix)
         # endregion
 
         if event.unicode != "" or event.type in {'BACK_SPACE', 'DEL', 'RET'}:
