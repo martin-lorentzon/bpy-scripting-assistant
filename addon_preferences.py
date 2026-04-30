@@ -2,9 +2,9 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import EnumProperty, StringProperty, IntProperty, FloatProperty, FloatVectorProperty
 from threading import Thread
+from . import session_manager
 from .providers import PROVIDERS
 from .models import MODELS
-from . import session_manager
 
 
 class BPYSAPreferences(AddonPreferences):
@@ -57,16 +57,20 @@ class BPYSAPreferences(AddonPreferences):
         default="qwen2.5-coder:1.5b-base-q4_K_M",
         search=model_search,
     )
+    code_completion_system_prompt: StringProperty(
+        name="Code Completion System Prompt",
+        default="You complete Python code for Blender using the bpy API. Follow Blender operator conventions."
+    )
     fim_prefix_lines: IntProperty(
         name="Prefix Lines",
-        description="The number of lines *before* the cursor to use as context",
+        description="The number of lines before the cursor to use as context",
         default=40,
         min=1,
         max=100
     )
     fim_suffix_lines: IntProperty(
         name="Suffix Lines",
-        description="The number of lines *after* the cursor to use as context",
+        description="The number of lines after the cursor to use as context",
         default=10,
         min=1,
         max=100
@@ -123,7 +127,7 @@ class BPYSAPreferences(AddonPreferences):
             panel.prop(self, "llm_provider")
             panel.prop(self, "base_url")
             panel.separator()
-            panel.prop(self, "model")
+            panel.prop(self, "code_completion_model")
             panel.separator()
             row = panel.row()
             row.operator("bpysa.create_session", text="Connect")
@@ -131,13 +135,14 @@ class BPYSAPreferences(AddonPreferences):
             sub.enabled = session_manager.has_session()
             sub.operator("bpysa.close_session", text="Disconnect")
 
-        header, panel = layout.panel("bpysa_autocomplete_panel", default_closed=True)
+        header, panel = layout.panel("bpysa_code_completion_panel", default_closed=True)
         header.label(text="Code Completion")
 
         if panel:
-            panel.prop(self, "debounce_time")
+            panel.prop(self, "code_completion_system_prompt", text="System Prompt")
             panel.prop(self, "fim_prefix_lines")
             panel.prop(self, "fim_suffix_lines")
+            panel.prop(self, "debounce_time")
 
         header, panel = layout.panel("bpysa_theme_panel", default_closed=True)
         header.label(text="Theme")

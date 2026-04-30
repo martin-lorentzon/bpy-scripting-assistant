@@ -27,5 +27,6 @@ class QwenCoder(BaseModelFamily):
     fim_stop_tokens = ["<|fim_prefix|>", "<|fim_suffix|>",
                        "<|fim_middle|>", "<|cursor|>", "<|endoftext|>"]
 
-    def build_fim_prompt(cls, prefix, suffix):
-        return f"<|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>"
+    @classmethod
+    def build_fim_prompt(cls, prefix, suffix, system_prompt=""):
+        return f"{system_prompt}\n\n<|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>"

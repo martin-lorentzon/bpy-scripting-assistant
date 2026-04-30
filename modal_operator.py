@@ -1,14 +1,13 @@
 import bpy
 from bpy.props import BoolProperty
-from requests import Session
 import threading
 import time
-
+from .addon_preferences import BPYSAPreferences
 from . import session_manager
-from .autocomplete_shader import draw_autocomplete
 from .text_helpers import get_cursor_index
 from .providers import BaseLLMProvider
 from .models import BaseModelFamily
+from .autocomplete_shader import draw_autocomplete
 
 
 class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
@@ -17,26 +16,6 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
     bl_description = "Show suggestions while typing"
 
     _draw_handler = None
-
-    def worker(self, area, addon_prefs, session: Session, prompt: str, current_request: int):
-        provider: BaseLLMProvider = addon_prefs.get_provider()
-
-        result = provider.prompt(
-            session,
-            addon_prefs.base_url,
-            addon_prefs.code_completion_model,
-            prompt
-        )
-
-        if current_request == self._request_id:
-            self._text = result
-
-            def redraw_area():
-                if area:
-                    area.tag_redraw()
-                return None
-
-            bpy.app.timers.register(redraw_area, first_interval=0.0)
 
     @classmethod
     def poll(cls, context):
@@ -48,12 +27,12 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
             BPYSA_OT_toggle_code_completion._remove_draw_handler()
             return {"CANCELLED"}
 
-        self._text = ""
-        self._last_input_time = time.time()
-        self._last_prompt = ""
+        self._area_to_redraw = context.area
 
-        self._thread = None
+        self._last_prompt = ""
         self._request_id = 0
+        
+        self._text_to_insert = ""
 
         context.window_manager.modal_handler_add(self)
         context.window_manager.code_completion_running = True
@@ -67,12 +46,10 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         if not (context.window_manager.code_completion_running and context.space_data.text and session_manager.has_session()):
             context.window_manager.code_completion_running = False
             BPYSA_OT_toggle_code_completion._remove_draw_handler()
-            if context.area:
-                context.area.tag_redraw()
+            self._area_to_redraw.tag_redraw()
             return {"CANCELLED"}
 
-        addon_prefs = context.preferences.addons[__package__].preferences
-        provider: BaseLLMProvider = addon_prefs.get_provider()
+        addon_prefs: BPYSAPreferences = context.preferences.addons[__package__].preferences
         model_family: BaseModelFamily = addon_prefs.get_model_family("code_completion_model")
 
         # region Prompt Building
@@ -89,28 +66,39 @@ class BPYSA_OT_toggle_code_completion(bpy.types.Operator):
         prefix = "\n".join(prefix_lines)
         suffix = "\n".join(suffix_lines)
 
-        prompt = model_family.build_fim_prompt(prefix, suffix)
+        prompt = model_family.build_fim_prompt(prefix, suffix, system_prompt=addon_prefs.code_completion_system_prompt)
         # endregion
 
-        if event.unicode != "" or event.type in {'BACK_SPACE', 'DEL', 'RET'}:
-            self._last_input_time = time.time()
+        #if event.unicode != "" or event.type in {'BACK_SPACE', 'DEL', 'RET'}:
+            #self._last_input_time = time.time()
 
-        debounce_ok = (time.time() - self._last_input_time) > addon_prefs.debounce_time
+        #debounce_ok = (time.time() - self._last_input_time) > addon_prefs.debounce_time
         new_prompt = prompt != self._last_prompt
 
         if new_prompt:
+            def worker(self):
+                current_request = self._request_id
+                provider: BaseLLMProvider = addon_prefs.get_provider()
+
+                result = provider.prompt(
+                    session_manager.get_session(),
+                    addon_prefs.base_url,
+                    addon_prefs.code_completion_model,
+                    prompt,
+                    stop = model_family.fim_stop_tokens + ["\n"]  # TODO: Add support for multiline completions
+                )
+
+                if current_request == self._request_id:
+                    self._text_to_insert = result
+                    bpy.app.timers.register(self._area_to_redraw.tag_redraw, first_interval=0.0)
+
             self._request_id += 1
-            self._thread = threading.Thread(
-                target=self._run_completion,
-                args=(context.area, addon_prefs, prompt, self._request_id),
-                daemon=True
-            )
-            self._thread.start()
+            self._thread = threading.Thread(target=worker, args=(self,), daemon=True).start()
 
         self._last_prompt = prompt
 
         if event.type == "TAB" and event.value == "PRESS":
-            bpy.ops.text.insert(text=self._text)
+            bpy.ops.text.insert(text=self._text_to_insert)
             return {"RUNNING_MODAL"}
 
         context.area.tag_redraw()

@@ -12,6 +12,12 @@ class BaseLLMProvider(ABC):
     name: str = "Provider"
     base_url: str = "http://localhost:1234"
 
+    default_options: dict = {
+        "stop": [],
+    }
+
+    default_request = dict()
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if not inspect.isabstract(cls):
@@ -34,10 +40,10 @@ class Ollama(BaseLLMProvider):
     base_url = "http://localhost:11434"
 
     default_options = {
-        "stop": [],
         "num_thread": 4,
         "num_predict": 64,
         "temperature": 0.0,
+        "stop": [],
     }
 
     default_request = {
@@ -93,8 +99,8 @@ class Ollama(BaseLLMProvider):
         payload = {
             "model": model,
             "prompt": prompt,
-            **request,
             "options": options,
+            **request,  # Rest of request
         }
 
         try:
